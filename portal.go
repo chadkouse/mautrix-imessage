@@ -1413,8 +1413,10 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	// Only convert when sending to iMessage. SMS users probably don't want CAF.
 	if portal.Identifier.Service == "iMessage" && isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
 		cafPath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + ".caf"
-		if err = exec.Command("afconvert", "-f", "caff", "-d", "opus", filePath, cafPath).Run(); err != nil {
-			log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
+		cmd := exec.Command("afconvert", "-f", "caff", "-d", "opus", filePath, cafPath)
+		if out, convErr := cmd.CombinedOutput(); convErr != nil {
+			log.Errorfln("Failed to transcode voice message to CAF: %v\nafconvert output: %s", convErr, out)
+			err = convErr
 			return
 		}
 		filePath = cafPath
