@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
@@ -1411,15 +1412,15 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 
 	// Only convert when sending to iMessage. SMS users probably don't want CAF.
 	if portal.Identifier.Service == "iMessage" && isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
-		filePath, err = ffmpeg.ConvertPath(context.TODO(), filePath, ".caf", []string{}, []string{"-c:a", "libopus"}, false)
-		mimeType = "audio/x-caf"
-		isVoiceMemo = true
-		filename = filepath.Base(filePath)
-
-		if err != nil {
+		cafPath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + ".caf"
+		if err = exec.Command("afconvert", "-f", "caff", "-d", "opus", filePath, cafPath).Run(); err != nil {
 			log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
 			return
 		}
+		filePath = cafPath
+		mimeType = "audio/x-caf"
+		isVoiceMemo = true
+		filename = filepath.Base(filePath)
 	}
 
 	resp, err = portal.bridge.IM.SendFile(portal.getTargetGUID("media message", evt.ID, ""), caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata)
