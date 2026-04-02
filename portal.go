@@ -1411,19 +1411,21 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
 
 	// Only convert when sending to iMessage. SMS users probably don't want CAF.
+	// iMessage voice memos use CAF with Opus codec at 24000 Hz (since iOS 12.2).
+	// ffmpeg cannot mux Opus into CAF, so we use a two-stage conversion:
+	// 1. ffmpeg decodes OGG to AIFF (afconvert cannot read OGG)
+	// 2. afconvert encodes AIFF to CAF/Opus
 	if portal.Identifier.Service == "iMessage" && isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
 		basePath := strings.TrimSuffix(filePath, filepath.Ext(filePath))
 		aiffPath := basePath + ".aiff"
 		cafPath := basePath + ".caf"
-		// ffmpeg decodes OGG/Opus (which afconvert cannot read) to AIFF
 		if out, convErr := exec.Command("ffmpeg", "-i", filePath, "-f", "aiff", aiffPath).CombinedOutput(); convErr != nil {
 			log.Errorfln("Failed to decode voice message to AIFF: %v\nffmpeg output: %s", convErr, out)
 			err = convErr
 			return
 		}
-		// afconvert encodes AIFF -> CAF/AAC (the standard format for iMessage voice memos)
-		if out, convErr := exec.Command("afconvert", "-f", "caff", "-d", "aac", aiffPath, cafPath).CombinedOutput(); convErr != nil {
-			log.Errorfln("Failed to encode voice message to CAF: %v\nafconvert output: %s", convErr, out)
+		if out, convErr := exec.Command("afconvert", "-f", "caff", "-d", "opus", aiffPath, cafPath).CombinedOutput(); convErr != nil {
+			log.Errorfln("Failed to encode voice message to CAF/Opus: %v\nafconvert output: %s", convErr, out)
 			err = convErr
 			return
 		}
